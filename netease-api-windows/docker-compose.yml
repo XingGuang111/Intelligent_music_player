@@ -1,0 +1,55 @@
+services:
+  netease-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: netease-api:1.0.0
+    container_name: netease-api
+    restart: unless-stopped
+    ports:
+      # 宿主机端口可用 .env 里的 PORT 覆盖，容器内固定 3000
+      - "${PORT:-3000}:3000"
+    env_file:
+      - .env
+    environment:
+      TZ: Asia/Shanghai
+      NODE_ENV: production
+      PORT: 3000
+      HOST: 0.0.0.0
+    volumes:
+      # 与宿主机共用同一份 .env：容器内扫码登录会直接写回宿主机文件，重建不丢登录态
+      # 注意：Docker Desktop 下「宿主机改文件」不会触发容器内 fs.watch，宿主机侧改完请 docker compose restart
+      - ./.env:/app/.env
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 25s
+      retries: 3
+
+  netease-player:
+    # 与 API 共用同一镜像（compose 只构建一次），只是启动命令不同
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: netease-api:1.0.0
+    container_name: netease-player
+    restart: unless-stopped
+    depends_on:
+      netease-api:
+        condition: service_healthy
+    ports:
+      - "${PLAYER_PORT:-8080}:8080"
+    environment:
+      TZ: Asia/Shanghai
+      # 容器内 127.0.0.1 是自己，必须用服务名访问 API 容器
+      API_BASE: http://netease-api:3000
+      PLAYER_PORT: 8080
+    command: ["node", "scripts/serve-player.js"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3

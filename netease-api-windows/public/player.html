@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>网易云音乐 · 本地播放器</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#fff; --line:#e3e6ea; --text:#1f2328;
+    --muted:#6b7280; --accent:#c62f2f; --accent-soft:#fdecec;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+       font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif}
+  .wrap{max-width:860px;margin:0 auto;padding:24px 20px 60px}
+
+  /* ---- 顶栏 ---- */
+  .top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}
+  .top .brand h1{font-size:20px;margin:0}
+  .top .brand .sub{color:var(--muted);font-size:13px}
+  .acct{display:flex;align-items:center;gap:8px}
+  .acct img{width:28px;height:28px;border-radius:50%;display:block;background:#e5e7eb}
+  .acct .nick{font-size:13px;font-weight:500;max-width:160px;overflow:hidden;
+              text-overflow:ellipsis;white-space:nowrap}
+  .tag{display:inline-block;padding:2px 10px;border-radius:20px;font-size:12px;
+       background:var(--accent-soft);color:var(--accent)}
+  .tag.off{background:#eef0f3;color:var(--muted)}
+  .btn{padding:7px 14px;border:1px solid var(--line);background:#fff;border-radius:8px;
+       color:var(--text);font-size:13px;cursor:pointer}
+  .btn:hover{background:#f5f6f8}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.primary:hover{opacity:.9}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
+  .row{display:flex;gap:8px}
+  input{flex:1;padding:9px 12px;border:1px solid var(--line);border-radius:8px;
+        font-size:14px;outline:none;background:#fff;color:var(--text)}
+  input:focus{border-color:var(--accent)}
+  button.s{padding:9px 18px;border:none;border-radius:8px;background:var(--accent);
+         color:#fff;font-size:14px;cursor:pointer}
+  button.s:hover{opacity:.9}
+  button.ghost{background:#fff;color:var(--text);border:1px solid var(--line)}
+  ul{list-style:none;margin:0;padding:0}
+  li{padding:10px 12px;border-radius:8px;cursor:pointer;display:flex;
+     justify-content:space-between;align-items:center;gap:12px}
+  li:hover{background:#f0f2f5}
+  li.active{background:var(--accent-soft)}
+  .name{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .artist{color:var(--muted);font-size:13px}
+  .dur{color:var(--muted);font-size:12px;flex-shrink:0}
+  .now{text-align:center;padding:8px 0 4px}
+  .now .t{font-size:17px;font-weight:600}
+  .now .a{color:var(--muted);font-size:13px;margin-bottom:10px}
+  audio{width:100%;margin-top:6px}
+  .lyric{white-space:pre-wrap;color:#374151;font-size:13px;line-height:2;
+         max-height:300px;overflow:auto;margin:0}
+  .hint{background:#fff8e6;border:1px solid #f5d98a;color:#7a5b00;
+        padding:10px 12px;border-radius:8px;font-size:13px;margin-bottom:16px}
+  .empty{color:var(--muted);text-align:center;padding:30px 0}
+
+  /* ---- 登录弹层 ---- */
+  .mask{position:fixed;inset:0;background:rgba(20,22,26,.45);display:flex;
+        align-items:center;justify-content:center;z-index:50;padding:20px}
+  .mask.hide{display:none}
+  .modal{background:#fff;border-radius:12px;width:360px;max-width:100%;padding:22px;
+         box-shadow:0 16px 48px rgba(0,0,0,.24)}
+  .modal h2{margin:0 0 6px;font-size:18px}
+  .modal .desc{color:var(--muted);font-size:13px;margin-bottom:14px}
+  .qr{width:200px;height:200px;margin:0 auto 12px;background:#fafafa;border:1px solid var(--line);
+      border-radius:10px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+  .qr img{width:200px;height:200px}
+  .qr .ph{color:var(--muted);font-size:13px;text-align:center;padding:0 12px}
+  .state{text-align:center;font-size:13px;color:var(--muted);min-height:20px;margin-bottom:14px}
+  .state.ok{color:#15803d}
+  .state.err{color:#b91c1c}
+  .actions{display:flex;gap:8px}
+  .actions .btn{flex:1;text-align:center;padding:9px 12px}
+  .tip{margin-top:12px;font-size:12px;color:var(--muted);text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div class="brand">
+      <h1>网易云音乐 · 本地播放器</h1>
+      <div class="sub">通过本地 API 服务播放</div>
+    </div>
+    <div class="acct">
+      <span id="chip" class="tag off">检查中…</span>
+      <img id="avatar" style="display:none" alt="">
+      <span id="nick" class="nick" style="display:none"></span>
+      <button id="acctBtn" class="btn" style="display:none" onclick="openLogin()">登录</button>
+    </div>
+  </div>
+
+  <div id="hint" class="hint" style="display:none"></div>
+
+  <div class="card">
+    <div class="row">
+      <input id="q" placeholder="输入歌名或歌手，回车搜索" autocomplete="off">
+      <button class="s" onclick="doSearch()">搜索</button>
+      <button class="s ghost" onclick="loadPlaylist()">热门歌单</button>
+    </div>
+  </div>
+
+  <div class="card" id="listCard" style="display:none"><ul id="list"></ul></div>
+
+  <div class="card" id="playerCard" style="display:none">
+    <div class="now">
+      <div class="t" id="title"></div>
+      <div class="a" id="artist"></div>
+      <audio id="audio" controls></audio>
+    </div>
+  </div>
+
+  <div class="card" id="lyricCard" style="display:none">
+    <div class="lyric" id="lyric"></div>
+  </div>
+</div>
+
+<!-- 登录 / 账号失效提示 -->
+<div class="mask hide" id="mask">
+  <div class="modal">
+    <h2 id="moTitle">登录网易云账号</h2>
+    <div class="desc" id="moDesc">登录后可以播放完整歌曲和查看自己的歌单。</div>
+    <div class="qr" id="qrBox"><div class="ph">二维码加载中…</div></div>
+    <div class="state" id="qrState"></div>
+    <div class="actions">
+      <button class="btn primary" id="btnScan" onclick="startLogin()">扫码登录</button>
+      <button class="btn" onclick="skipLogin()">跳过，仅试听</button>
+    </div>
+    <div class="tip">也可以随时点右上角「登录」重新扫码</div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id)
+let pollTimer = null
+
+async function api(path) {
+  const r = await fetch('/api' + path)
+  return r.json()
+}
+
+/* ================= 登录 ================= */
+
+async function refreshAuth({ silent = false } = {}) {
+  let s
+  try {
+    s = await api('/auth/status')
+  } catch (e) {
+    $('chip').textContent = '服务未启动'
+    $('chip').className = 'tag off'
+    $('acctBtn').style.display = 'none'
+    showHint('连不上本地服务。请先运行 start.bat，再执行 npm run player。')
+    return
+  }
+
+  if (s.loggedIn && s.profile) {
+    paintAccount(s.profile)
+    return
+  }
+
+  paintGuest()
+  if (silent) return
+
+  // 没有账号信息，或原来的登录态已失效（改密码/长期未登录都会这样）
+  if (s.reason === 'expired') {
+    openLogin({
+      title: '登录态已失效',
+      desc: '你之前保存的账号信息已不可用（可能是修改过密码或太久没登录）。重新扫码即可恢复，也可以跳过继续试听。',
+    })
+  } else if (s.reason === 'anonymous') {
+    openLogin({
+      title: '登录网易云账号',
+      desc: '登录后可以播放完整歌曲和查看自己的歌单；不登录也能继续试听片段。',
+    })
+  } else {
+    showHint(s.msg ? ('服务异常：' + s.msg) : '服务未就绪，请稍后重试。')
+  }
+}
+
+function paintAccount(p) {
+  $('chip').textContent = '已登录'
+  $('chip').className = 'tag'
+  $('nick').textContent = p.nickname || ''
+  $('nick').style.display = ''
+  if (p.avatarUrl) { $('avatar').src = p.avatarUrl; $('avatar').style.display = '' }
+  else $('avatar').style.display = 'none'
+  $('acctBtn').textContent = '退出登录'
+  $('acctBtn').onclick = logout
+  $('acctBtn').style.display = ''
+  hideHint()
+}
+
+function paintGuest() {
+  $('chip').textContent = '游客模式'
+  $('chip').className = 'tag off'
+  $('nick').style.display = 'none'
+  $('avatar').style.display = 'none'
+  $('acctBtn').textContent = '登录'
+  $('acctBtn').onclick = () => openLogin()
+  $('acctBtn').style.display = ''
+}
+
+function openLogin(opts = {}) {
+  $('moTitle').textContent = opts.title || '登录网易云账号'
+  $('moDesc').textContent = opts.desc || '用网易云音乐 App 扫码即可，Cookie 会自动保存。'
+  $('qrBox').innerHTML = '<div class="ph">点「扫码登录」生成二维码</div>'
+  $('qrState').textContent = ''
+  $('qrState').className = 'state'
+  $('btnScan').disabled = false
+  $('mask').classList.remove('hide')
+}
+
+function closeLogin() {
+  $('mask').classList.add('hide')
+  stopPoll()
+}
+
+/** 用户选择跳过：关掉弹层，按游客模式继续，但保留顶部登录入口 */
+function skipLogin() {
+  closeLogin()
+  showHint('当前为游客模式，只能播放约 45 秒的试听片段。想听完整歌曲点右上角「登录」。')
+}
+
+async function logout() {
+  await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {})
+  paintGuest()
+  showHint('已退出登录，切回游客模式。')
+}
+
+async function startLogin() {
+  stopPoll()
+  $('btnScan').disabled = true
+  $('qrBox').innerHTML = '<div class="ph">二维码生成中…</div>'
+  setState('正在获取二维码…', '')
+
+  const j = await api('/auth/qr/create')
+  if (!j.key) {
+    $('qrBox').innerHTML = '<div class="ph">生成失败</div>'
+    setState(j.msg || '无法生成二维码，请检查服务', 'err')
+    $('btnScan').disabled = false
+    return
+  }
+  $('qrBox').innerHTML = j.qrimg
+    ? '<img src="' + j.qrimg + '" alt="登录二维码">'
+    : '<div class="ph">接口未返回二维码图片</div>'
+  setState('请用网易云音乐 App 扫码', '')
+
+  let expiredOnce = false
+  const deadline = Date.now() + j.expiresMs
+  const reload = () => { if (!expiredOnce) { expiredOnce = true; stopPoll(); startLogin() } else stopPoll() }
+
+  pollTimer = setInterval(async () => {
+    if (Date.now() > deadline) { setState('二维码已过期，请重新点「扫码登录」', 'err'); stopPoll(); $('btnScan').disabled = false; return }
+    let c
+    try { c = await api('/auth/qr/check?key=' + encodeURIComponent(j.key)) } catch (e) { return }
+
+    if (c.code === 801) setState('等待扫码…', '')
+    else if (c.code === 802) setState('已扫码，请在 App 上确认…', '')
+    else if (c.code === 803) {
+      stopPoll()
+      if (c.loggedIn) {
+        setState('登录成功：' + c.profile.nickname, 'ok')
+        paintAccount(c.profile)
+        setTimeout(closeLogin, 900)
+      } else { setState(c.message || '登录未完成，请重试', 'err'); $('btnScan').disabled = false }
+    } else if (c.code === 800) { reload() }
+  }, 1500)
+}
+
+function setState(text, cls) {
+  $('qrState').textContent = text
+  $('qrState').className = 'state' + (cls ? ' ' + cls : '')
+}
+function stopPoll() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null } }
+
+/* ================= 播放 ================= */
+
+function showHint(t) { $('hint').style.display = 'block'; $('hint').textContent = t }
+function hideHint() { $('hint').style.display = 'none' }
+
+async function doSearch() {
+  const kw = $('q').value.trim()
+  if (!kw) return
+  $('list').innerHTML = '<div class="empty">搜索中…</div>'
+  $('listCard').style.display = 'block'
+  const j = await api('/search?keywords=' + encodeURIComponent(kw) + '&type=1&limit=20')
+  render((j.result && j.result.songs) || [])
+}
+
+async function loadPlaylist() {
+  $('list').innerHTML = '<div class="empty">加载中…</div>'
+  $('listCard').style.display = 'block'
+  const j = await api('/playlist/detail?id=24381616')
+  render((j.playlist && j.playlist.tracks) || [])
+}
+
+function render(songs) {
+  if (!songs.length) { $('list').innerHTML = '<div class="empty">没有结果</div>'; return }
+  $('list').innerHTML = ''
+  songs.forEach((s) => {
+    const li = document.createElement('li')
+    const dur = s.duration || s.dt || 0
+    li.innerHTML =
+      '<div style="min-width:0">' +
+        '<div class="name">' + esc(s.name) + '</div>' +
+        '<div class="artist">' + esc((s.artists || s.ar || []).map(a => a.name).join(' / ')) + '</div>' +
+      '</div>' +
+      '<div class="dur">' + (dur ? fmt(dur) : '') + '</div>'
+    li.onclick = () => play(s, li)
+    $('list').appendChild(li)
+  })
+}
+
+async function play(song, li) {
+  document.querySelectorAll('#list li').forEach(x => x.classList.remove('active'))
+  li.classList.add('active')
+  $('playerCard').style.display = 'block'
+  $('title').textContent = song.name
+  $('artist').textContent = (song.artists || song.ar || []).map(a => a.name).join(' / ')
+
+  const j = await api('/song/url?id=' + song.id + '&level=exhigh')
+  const d = j.data && j.data[0]
+  if (!d || !d.url) {
+    $('title').textContent = '（这首拿不到播放链接，可能需要登录或版权受限）'
+    $('audio').removeAttribute('src')
+    return
+  }
+  $('audio').src = d.url
+  $('audio').play().catch(() => {})
+
+  const l = await api('/lyric?id=' + song.id)
+  const text = (l.lrc && l.lrc.lyric) || ''
+  $('lyricCard').style.display = text ? 'block' : 'none'
+  $('lyric').textContent = text || ''
+}
+
+function fmt(ms) { const s = Math.round(ms / 1000); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0') }
+function esc(t) {
+  return String(t == null ? '' : t).replace(/[&<>"]/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+}
+
+$('q').addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch() })
+refreshAuth()
+</script>
+</body>
+</html>

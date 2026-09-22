@@ -1,0 +1,20 @@
+# 开发模式：挂载源码 + 热重载，改代码不用重新构建镜像
+# 用法： docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+services:
+  netease-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: npm run dev
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      HOST: 0.0.0.0
+    volumes:
+      - .:/app
+      # 保留容器内的 node_modules，避免被宿主机的覆盖
+      - /app/node_modules
+  netease-player:
+    volumes:
+      # 播放器无第三方依赖，挂源码即可让 player.html 改动即时生效
+      - .:/app
